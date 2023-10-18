@@ -1,0 +1,281 @@
+#define Phoenix_No_WPI // remove WPI dependencies
+#include "ctre/Phoenix.h"
+#include "ctre/phoenix/platform/Platform.hpp"
+#include "ctre/phoenix/unmanaged/Unmanaged.h"
+#include <chrono>
+#include <iostream>
+#include <string>
+#include <thread>
+#include <unistd.h>
+#include <SDL2/SDL.h>
+#include <thread>
+//#include "gnuplot-iostream.h"
+
+using namespace ctre;
+using namespace ctre::phoenix;
+using namespace ctre::phoenix::platform;
+using namespace ctre::phoenix::motorcontrol;
+using namespace ctre::phoenix::motorcontrol::can;
+using namespace std::this_thread;
+using namespace std::chrono;
+
+TalonFX dir1(0, "can0");
+TalonFX vel1(1, "can0");
+ctre::phoenix::sensors::CANCoder canCoder1{2, "can0"};
+TalonFX dir2(3, "can0");
+TalonFX vel2(4, "can0");
+ctre::phoenix::sensors::CANCoder canCoder2{5, "can0"};
+TalonFX dir3(6, "can0");
+TalonFX vel3(7, "can0");
+ctre::phoenix::sensors::CANCoder canCoder3{8, "can0"};
+TalonFX dir4(9, "can0");
+TalonFX vel4(10, "can0");
+ctre::phoenix::sensors::CANCoder canCoder4{11, "can0"};
+bool go = 0;
+void configenc(){
+  canCoder1.ConfigFactoryDefault();
+  canCoder2.ConfigFactoryDefault();
+  canCoder3.ConfigFactoryDefault();
+
+  canCoder1.ConfigSensorInitializationStrategy(ctre::phoenix::sensors::SensorInitializationStrategy::BootToAbsolutePosition);
+  canCoder2.ConfigSensorInitializationStrategy(ctre::phoenix::sensors::SensorInitializationStrategy::BootToAbsolutePosition);
+  canCoder3.ConfigSensorInitializationStrategy(ctre::phoenix::sensors::SensorInitializationStrategy::BootToAbsolutePosition);
+
+  CANCoderConfiguration config1;
+  CANCoderConfiguration config2;
+  CANCoderConfiguration config3;
+  //config.sensorCoefficient = 2 * M_PI / 4096.0;
+  config1.unitString = "rad";
+  config2.unitString = "rad";
+  config3.unitString = "rad";
+
+  config1.sensorTimeBase = SensorTimeBase::PerSecond;
+  config2.sensorTimeBase = SensorTimeBase::PerSecond;
+  config3.sensorTimeBase = SensorTimeBase::PerSecond;
+
+  canCoder1.ConfigAllSettings(config1);
+  canCoder2.ConfigAllSettings(config2);
+  canCoder3.ConfigAllSettings(config3);
+}
+void PID1 (float target) {
+	float kp = 0.012;//0.00245 //0.0051 ;
+	float ki = 0;
+	float kd =  0.032; // 0.032787;
+
+	float eprev1, eprev2, erintegral2, erdif1, erdif2, prevint1;
+	unsigned long erintegral1;
+	configenc();
+	// double pos = canCoder1.GetPosition();
+	// float error = target - pos;
+	std::chrono::high_resolution_clock clock;
+	auto lastTime = clock.now();
+	while(abs(target -(canCoder1.GetPosition())) > 0.1){
+	auto currentTime = clock.now();
+    std::chrono::duration<float> deltaTime = (currentTime - lastTime)*( 1.0e6 );
+    lastTime = currentTime;
+	float deltaTimeSeconds = deltaTime.count();
+	float deltaT = deltaTime.count();
+    // Print delta time in seconds
+	double pos1 = canCoder1.GetPosition();
+	//double pos2 = canCoder2.GetPosition();
+
+	//float error1 = (30 + target - pos1); //(Offside 30 salah satu motor)
+	float error1 = (target - pos1);
+	//float error2 = (target - pos2);
+
+	erintegral1 = (error1 + prevint1)*deltaT;
+	prevint1 = erintegral1;
+	//erintegral2 = (error2 + eprev2)*deltaT;
+
+	erdif1 = (error1 - eprev1)/deltaT;
+	//erdif2 = (error2 - eprev2)/deltaT;
+
+	float filter1 = (0.06/(0.06 +(0.06*erintegral1)));
+	eprev1 = error1;
+	//eprev2 = error2;
+	float u1 = kp * error1 + ki * erintegral1 + kd  *erdif1 ;
+	//loat u2 = kp * error2 + ki * erintegral2 + kd * erdif2;
+	std::cout << "PID 1  " << pos1 << "   vel1  " << u1<<  std::endl;
+	//std::cout  << pos2 <<  std::endl;
+	if (abs(error1) < 0.09){//abs(error2) < 0.3){
+		ctre::phoenix::unmanaged::Unmanaged::FeedEnable(1);
+		//dir1.Set(ControlMode::Position , 0);
+		dir1.SetNeutralMode(NeutralMode(Brake));
+		break;
+	}
+	else{
+		if (abs(u1) < 0.06)
+		{
+			if(u1 < 0){
+				u1 = 0.06;
+				int arah = -1;
+				ctre::phoenix::unmanaged::Unmanaged::FeedEnable(1);
+				dir1.Set(ControlMode::PercentOutput, -u1*arah);
+			}
+			else{
+				u1 = 0.06;
+				int arah = 1;
+				ctre::phoenix::unmanaged::Unmanaged::FeedEnable(1);
+				dir1.Set(ControlMode::PercentOutput, -u1*arah);
+			}
+			/* code */
+		}
+
+		// if (abs(u2) < 0.1)
+		// {
+		// 	if(u2 < 0){
+		// 		u2 = 0.08;
+		// 		int arah2 = -1;
+		// 		ctre::phoenix::unmanaged::Unmanaged::FeedEnable(1);
+		// 		dir2.Set(ControlMode::PercentOutput, -u2*arah2);
+		// 	}
+		// 	else{
+		// 		u2 = 0.08;
+		// 		int arah2 = 1;
+		// 		ctre::phoenix::unmanaged::Unmanaged::FeedEnable(1);
+		// 		dir2.Set(ControlMode::PercentOutput, -u2*arah2);
+		// 	}
+		// 	/* code */
+		// }
+		else{
+		ctre::phoenix::unmanaged::Unmanaged::FeedEnable(1);
+		dir1.Set(ControlMode::PercentOutput, -u1);
+		//dir2.Set(ControlMode::PercentOutput, -u2);
+		}
+	}
+}
+//NeutralMode(brake);
+}
+
+void PID2 (float target) {
+	float kp =  0.015;//0.00245 //0.0051 ;
+	float ki = 0;
+	float kd =  0.32; // 0.032787;
+	float eprev1, eprev2, erintegral1, erdif1, erdif2, prevint2;
+	unsigned long erintegral2;
+	configenc();
+	std::chrono::high_resolution_clock clock;
+	auto lastTime = clock.now();
+	while(target < 1){
+	auto currentTime = clock.now();
+    std::chrono::duration<float> deltaTime = (currentTime - lastTime)*( 1.0e6 );
+    lastTime = currentTime;
+	float deltaTimeSeconds = deltaTime.count();
+	float deltaT = deltaTime.count();
+    // Print delta time in seconds
+	
+	double pos2 = canCoder2.GetPosition();
+
+	float error2 = (target - pos2);
+
+	erintegral2 = (error2 + prevint2)*deltaT;
+	prevint2 = erintegral2;
+
+	erdif2 = (error2 - eprev2)/deltaT;
+
+	float filter2 = (0.08/(1 +(0.08*erintegral1)));
+
+	eprev2 = error2;
+	
+	float u2 = kp * error2 + ki * erintegral2 + kd  *erdif2 ;
+
+	std::cout << "PID 2  " << pos2 << "  vel2  " << u2 <<  std::endl;
+	if (abs(error2) < 0.1){//abs(error2) < 0.3){
+		go = 1;
+		ctre::phoenix::unmanaged::Unmanaged::FeedEnable(1);
+		dir2.Set(ControlMode::PercentOutput , NeutralMode(2));
+		break;
+	}
+	else{
+		go = 0;
+		if (abs(u2) < 0.06)
+		{
+			if(u2 < 0){
+				u2 = 0.06;
+				int arah2 = -1;
+				ctre::phoenix::unmanaged::Unmanaged::FeedEnable(1);
+				dir2.Set(ControlMode::PercentOutput, -u2*arah2);
+			}
+			else{
+				u2 = 0.06;
+				int arah2 = 1;
+				ctre::phoenix::unmanaged::Unmanaged::FeedEnable(1);
+				dir2.Set(ControlMode::PercentOutput, -u2*arah2);
+			}
+			/* code */
+		}
+		else{
+		ctre::phoenix::unmanaged::Unmanaged::FeedEnable(1);
+		dir2.Set(ControlMode::PercentOutput, -u2);
+		}
+	}
+}
+}
+void cepat (float v){
+	// while (go = 1)
+	// {
+	ctre::phoenix::unmanaged::Unmanaged::FeedEnable(1);
+		//dir1.Set(ControlMode::Position , 0);
+	dir1.SetNeutralMode(NeutralMode(Brake));
+	vel1.Set(ControlMode::PercentOutput, v);
+	//}
+	
+}
+void kinematic (float x) {
+	std::thread th1(PID1, x);
+	//std::thread th2(PID2, x);
+	std::thread th3(cepat, 0.1);
+	th1.join();
+	//th2.join();
+	th3.join();
+	// ctre::phoenix::unmanaged::Unmanaged::FeedEnable(1);
+	// vel1.Set(ControlMode::PercentOutput, 0.1);
+	// sleep_for(seconds(5));
+	// float theta = atan(y/x);
+	// std::cout  << theta << std::endl;
+	// float kec1 = abs(sin(90 - theta));
+	// float kec2 = abs(sin(210 - theta));
+	// float kec3 = abs(sin(330 - theta));
+}
+int main() {	
+	// dir1.ConfigVoltageCompSaturation(12);
+	// dir1.EnableVoltageCompensation(true);
+	// dir2.ConfigVoltageCompSaturation(12);
+	// dir2.EnableVoltageCompensation(true);
+	//motor.Set(ControlMode::PercentOutput, 1);
+	//std::string firmwareVersion = std::to_string(motor.GetFirmwareVersion());
+	//PID(0);
+	// TalonFXConfiguration config;
+	while (true) {
+		// 		ctre::phoenix::unmanaged::Unmanaged::FeedEnable(1);
+		// dir2.SetNeutralMode(NeutralMode(Brake));
+		ctre::phoenix::unmanaged::Unmanaged::FeedEnable(1);
+		dir1.SetNeutralMode(NeutralMode(Brake));
+		dir2.SetNeutralMode(NeutralMode(Brake));
+		dir3.SetNeutralMode(NeutralMode(Brake));
+		dir4.SetNeutralMode(NeutralMode(Brake));
+		vel1.Set(ControlMode::PercentOutput, 0.2);
+		vel2.Set(ControlMode::PercentOutput, 0.2);
+		vel3.Set(ControlMode::PercentOutput, 0.2);
+		vel4.Set(ControlMode::PercentOutput, 0.2);
+
+		//kinematic(0);
+		// sleep_for(seconds(5));
+		// kinematic(45);
+		// sleep_for(seconds(1));
+		// kinematic(30);
+		// sleep_for(seconds(1));
+		// kinematic(0);
+		// sleep_for(seconds(1));
+		//float masuk = input + 51;
+		//PID(input);
+		//PID(0);
+		//kinematic(10, 10, 0);
+		//std::cout << "Firmware Version: " << motor.GetFirmwareVersion() << std::endl;
+		// ctre::phoenix::unmanaged::Unmanaged::FeedEnable(100);
+		// motor.Set(ControlMode::PercentOutput, 1);
+	}
+
+	SDL_Quit();
+	return 0;
+}
